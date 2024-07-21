@@ -1,0 +1,23 @@
+[00:00.000 --> 00:00.800]  Тест.
+ Тест.
+DEBUG:asyncio:Using selector: EpollSelector
+INFO:aiogram.dispatcher:Start polling
+INFO:aiogram.dispatcher:Run polling for bot @lasttherapybot id=5362395639 - 'LastTherapyBot'
+INFO:aiogram.event:Update id=271331041 is not handled. Duration 0 ms by bot id=5362395639
+INFO:aiogram.event:Update id=271331042 is not handled. Duration 0 ms by bot id=5362395639
+INFO:root:voice received from ▘▗ ▙ ▞ with id 291699185
+DEBUG:root:voice id: AwACAgIAAxkBAAIGEWac3kKexaqskDvtmV-Ci1W95wSYAAITTAAC77LoSDTiuqPpXAZ7NQQ
+DEBUG:root:file: file_id='AwACAgIAAxkBAAIGEWac3kKexaqskDvtmV-Ci1W95wSYAAITTAAC77LoSDTiuqPpXAZ7NQQ' file_unique_id='AgADE0wAAu-y6Eg' file_size=10354 file_path='voice/file_18.oga'
+DEBUG:root:file path: voice/file_18.oga
+DEBUG:root:destination file: voice/1553.oga
+voice downloaded
+using small model
+INFO:aiogram.event:Update id=271331043 is handled. Duration 2906 ms by bot id=5362395639
+INFO:root:voice received from ▘▗ ▙ ▞ with id 291699185
+DEBUG:root:voice id: AwACAgIAAxkBAAIGE2ac3kwKR0NIwAq3AAGUcuulZtV8MAACFEwAAu-y6EhZycSgv6JXIzUE
+DEBUG:root:file: file_id='AwACAgIAAxkBAAIGE2ac3kwKR0NIwAq3AAGUcuulZtV8MAACFEwAAu-y6EhZycSgv6JXIzUE' file_unique_id='AgADFEwAAu-y6Eg' file_size=9060 file_path='voice/file_19.oga'
+DEBUG:root:file path: voice/file_19.oga
+DEBUG:root:destination file: voice/1555.oga
+voice downloaded
+using small model
+INFO:aiogram.event:Update id=271331044 is handled. Duration 2866 ms by bot id=5362395639

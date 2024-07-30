@@ -23,7 +23,7 @@ dp: Dispatcher = Dispatcher()
 @dp.message(F.content_type.in_({'voice'}))
 async def auto_voice_recognition(message: Message):
         logging.info('voice received from ' + message.from_user.full_name + ' with id ' + str(message.from_user.id))
-        await voice_recognition(message)
+        await voice_recognition(message, model='large')
 
 async def voice_recognition(message: Message, model: str = 'small'):
     voice_id = message.voice.file_id

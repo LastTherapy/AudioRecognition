@@ -1,22 +1,17 @@
 import asyncio
 import logging
-import sys
+import os, sys
 from aiogram import Bot, Dispatcher
-from aiogram.enums import ParseMode
-from config import TOKEN
 from handlers import setup_handlers
+from dotenv import load_dotenv
 
-# Настройка логирования
-logging.basicConfig(level=logging.DEBUG, stream=sys.stdout)
-
-# Создание экземпляра бота и диспетчера
-bot = Bot(token=TOKEN)
-dp: Dispatcher = Dispatcher()
 
 async def main() -> None:
-    # Регистрация обработчиков
+    logging.basicConfig(level=logging.DEBUG, stream=sys.stdout)
+    load_dotenv()
+    bot = Bot(os.getenv("TG_TOKEN"))
+    dp: Dispatcher = Dispatcher()
     setup_handlers(dp)
-    # Запуск бота
     await dp.start_polling(bot)
 
 if __name__ == "__main__":

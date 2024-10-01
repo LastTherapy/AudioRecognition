@@ -2,12 +2,12 @@ import whisper
 
 
 
-def recognition(destination_file: str, model: str = "small"):
+def recognition(destination_file: str, model: str = "turbo"):
     #validation model name
-    model = "base" if model not in ['tiny', 'base', 'small', 'medium', 'large'] else model
+    model = "base" if model not in ['tiny', 'base', 'small', 'medium', 'large', 'turbo'] else model
     print(f"using {model} model")
     model = whisper.load_model(model)
-    result = model.transcribe(destination_file, language="ru", fp16=False)
+    result = model.transcribe(destination_file)
     return result["text"]
 
 def split_string(s, chunk_size=4096):

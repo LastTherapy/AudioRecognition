@@ -4,3 +4,4 @@ telegram/nohup.out
 voice
 __pycache__
 .idea
+.env

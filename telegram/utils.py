@@ -33,6 +33,6 @@ async def perform_voice_recognition(message: Message, model: str = 'small'):
         await bot.edit_message_text(result, chat_id=message.chat.id, message_id=recognized.message_id)
     else:
         await bot.delete_message(message_id=recognized.message_id, chat_id=recognized.chat.id)
-        splited = WhisperRecognition.split_string(result)
-        for chunk in splited:
+        split = WhisperRecognition.split_string(result)
+        for chunk in split:
             await message.reply(chunk)

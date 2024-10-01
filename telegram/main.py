@@ -1,9 +1,11 @@
 import asyncio
 import logging
 import os, sys
+import gc
 from aiogram import Bot, Dispatcher
 from handlers import setup_handlers
 from dotenv import load_dotenv
+
 
 
 async def main() -> None:
@@ -15,4 +17,6 @@ async def main() -> None:
     await dp.start_polling(bot)
 
 if __name__ == "__main__":
+    gc.enable()
+    gc.collect()
     asyncio.run(main())

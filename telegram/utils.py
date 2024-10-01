@@ -24,7 +24,7 @@ async def perform_voice_recognition(message: Message, model: str = 'small'):
         result = WhisperRecognition.recognition(destination_file, model)
     except Exception as e:
         logging.exception("Error in voice recognition")
-        result = "Sorry, no more GPU memory available just now. Error(("
+        result = "Sorry, no more GPU memory available just now. Try again later."
 
     if not result:
         result = "Sorry, no text in voice recognition."

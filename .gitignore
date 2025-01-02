@@ -1,9 +1,9 @@
 venv
 telegram/settings.py
 telegram/nohup.out
-voice
 __pycache__
 .idea
 .env
 *.mp4
+*.oga
 *.wav

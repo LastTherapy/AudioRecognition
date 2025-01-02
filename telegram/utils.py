@@ -6,6 +6,8 @@ from aiogram import Bot
 from aiogram.types import Message
 from config import VOICE_STORAGE
 import WhisperRecognition
+from moviepy import VideoFileClip
+from config import VIDEO_STORAGE
 
 
 async def download_file(bot: Bot, message: Message) -> str:
@@ -15,9 +17,28 @@ async def download_file(bot: Bot, message: Message) -> str:
     return destination_file
 
 
-async def perform_voice_recognition(message: Message, model: str = 'small'):
+async def download_video_circle(bot: Bot, message: Message) -> str:
+    file = await bot.get_file(message.video_note.file_id)
+    destination_file = os.path.join(VIDEO_STORAGE, f'{message.message_id}.mp4')
+    await bot.download_file(file.file_path, destination_file)
+    return destination_file
+
+async def extract_audio(message: Message) -> str:
     bot = message.bot
-    destination_file = await download_file(bot, message)
+    file: str = await download_video_circle(bot, message)
+    video = VideoFileClip(file)
+    audio_path = os.path.join(VOICE_STORAGE, f'{message.message_id}.wav')
+    video.audio.write_audiofile(audio_path, codec='pcm_s16le')
+    return audio_path
+
+
+
+async def perform_voice_recognition(message: Message, model: str = 'small', audio_path = None):
+    bot = message.bot
+    if audio_path is None:
+        destination_file = await download_file(bot, message)
+    else:
+        destination_file = audio_path
 
     await bot.send_chat_action(chat_id=message.chat.id, action="typing")
     recognized: Message = await message.reply(f"Начинаю распознавание... Использую {model} модель...")

@@ -1,5 +1,7 @@
 import os
 import logging
+from time import sleep
+
 from aiogram import Bot
 from aiogram.types import Message
 from config import VOICE_STORAGE
@@ -25,6 +27,10 @@ async def perform_voice_recognition(message: Message, model: str = 'small'):
     except RuntimeError as e:
         logging.exception("Error in voice recognition")
         result = "Sorry, no more GPU memory available just now. Try again later."
+        await message.reply(result)
+        sleep(5)
+        await bot.delete_message(chat_id=message.chat.id, message_id=message.message_id)
+        return
 
     if not result:
         result = "Sorry, no text in voice recognition."
@@ -36,3 +42,4 @@ async def perform_voice_recognition(message: Message, model: str = 'small'):
         split = WhisperRecognition.split_string(result)
         for chunk in split:
             await message.reply(chunk)
+

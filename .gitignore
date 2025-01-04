@@ -3,7 +3,7 @@ telegram/settings.py
 telegram/nohup.out
 __pycache__
 .idea
-.env
+telegram/.env
 *.mp4
 *.oga
 *.wav

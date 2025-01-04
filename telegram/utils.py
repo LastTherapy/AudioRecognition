@@ -8,6 +8,8 @@ from config import VOICE_STORAGE
 import WhisperRecognition
 from moviepy import VideoFileClip
 from config import VIDEO_STORAGE
+from config import media_autoremove
+from telegram.llm.openai_mini import improve_recognition
 
 
 async def download_file(bot: Bot, message: Message) -> str:
@@ -23,17 +25,19 @@ async def download_video_circle(bot: Bot, message: Message) -> str:
     await bot.download_file(file.file_path, destination_file)
     return destination_file
 
+
 async def extract_audio(message: Message) -> str:
     bot = message.bot
     file: str = await download_video_circle(bot, message)
     video = VideoFileClip(file)
+    if media_autoremove:
+        os.remove(file)
     audio_path = os.path.join(VOICE_STORAGE, f'{message.message_id}.wav')
     video.audio.write_audiofile(audio_path, codec='pcm_s16le')
     return audio_path
 
 
-
-async def perform_voice_recognition(message: Message, model: str = 'small', audio_path = None):
+async def perform_voice_recognition(message: Message, model: str = 'small', audio_path=None):
     bot = message.bot
     if audio_path is None:
         destination_file = await download_file(bot, message)
@@ -47,14 +51,18 @@ async def perform_voice_recognition(message: Message, model: str = 'small', audi
         result = WhisperRecognition.recognition(destination_file, model)['result']
     except RuntimeError as e:
         logging.exception("Error in voice recognition")
-        result = "Sorry, no more GPU memory available just now. Try again later."
+        print(e)
+        result = "Sorry, error in voice recognition. Try again later."
         await message.reply(result)
         sleep(5)
         await bot.delete_message(chat_id=message.chat.id, message_id=message.message_id)
         return
 
     if not result:
-        result = "Sorry, no text in voice recognition."
+        return
+
+    # using llm for correct mistakes
+    result = improve_recognition(result)
 
     if len(result) < 4096:
         await bot.edit_message_text(result, chat_id=message.chat.id, message_id=recognized.message_id)
@@ -63,4 +71,7 @@ async def perform_voice_recognition(message: Message, model: str = 'small', audi
         split = WhisperRecognition.split_string(result)
         for chunk in split:
             await message.reply(chunk)
+
+    if media_autoremove:
+        os.remove(destination_file)
 

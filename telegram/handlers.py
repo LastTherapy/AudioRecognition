@@ -6,6 +6,7 @@ from aiogram.filters.command import Command
 import gc
 from utils import  perform_voice_recognition, extract_audio
 
+
 def setup_handlers(dp: Dispatcher):
     @dp.message(Command("start"))
     async def start_message(message: Message):
@@ -26,7 +27,6 @@ def setup_handlers(dp: Dispatcher):
         logging.info(f'Voice received from {message.from_user.full_name} with id {message.from_user.id}')
         await perform_voice_recognition(message, model='large')
         gc.collect()
-
 
     @dp.message()
     async def log_text_messages(message: Message):

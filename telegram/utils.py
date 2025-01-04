@@ -9,7 +9,7 @@ import WhisperRecognition
 from moviepy import VideoFileClip
 from config import VIDEO_STORAGE
 from config import media_autoremove
-from telegram.llm.openai_mini import improve_recognition
+from llm.openai_mini import improve_recognition
 
 
 async def download_file(bot: Bot, message: Message) -> str:

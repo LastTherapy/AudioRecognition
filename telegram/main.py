@@ -1,15 +1,17 @@
 import asyncio
 import logging
 import os, sys
-import gc
 from aiogram import Bot, Dispatcher
-from handlers import setup_handlers
+
 from dotenv import load_dotenv
+load_dotenv()
+from handlers import setup_handlers
+
 
 
 async def main() -> None:
     logging.basicConfig(level=logging.DEBUG, stream=sys.stdout)
-    load_dotenv()
+
     bot = Bot(os.getenv("TG_TOKEN"))
     dp: Dispatcher = Dispatcher()
     setup_handlers(dp)

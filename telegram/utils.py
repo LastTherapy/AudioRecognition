@@ -9,6 +9,7 @@ from aiogram.types import Message
 from moviepy import VideoFileClip
 
 from settings import api_url
+from telegram import WhisperRecognition
 from telegram.config import VOICE_STORAGE, VIDEO_STORAGE, media_autoremove
 
 
@@ -55,7 +56,7 @@ async def perform_voice_recognition(message: Message, model: str = 'small', audi
         await recognized.edit_text(f"Отправляю результат на корректировку...")
         result = await improve_recognition(result)
 
-    except RuntimeError as e:
+    except Exception as e:
         logging.exception("Error in voice recognition")
         print(e)
         result = "Sorry, error in voice recognition. Try again later."

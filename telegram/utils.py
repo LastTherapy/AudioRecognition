@@ -1,20 +1,15 @@
 import asyncio
-import os
 import logging
+import os
 from time import sleep
 
+import requests
 from aiogram import Bot
 from aiogram.types import Message
-from config import VOICE_STORAGE
-import WhisperRecognition
 from moviepy import VideoFileClip
-from config import VIDEO_STORAGE
-from config import media_autoremove
-import requests
+
 from settings import api_url
-
-
-
+from telegram.config import VOICE_STORAGE, VIDEO_STORAGE, media_autoremove
 
 
 async def download_file(bot: Bot, message: Message) -> str:

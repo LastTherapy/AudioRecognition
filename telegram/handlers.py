@@ -4,7 +4,7 @@ from aiogram.types import Message
 from aiogram import F
 from aiogram.filters.command import Command
 import gc
-from utils import perform_voice_recognition, extract_audio
+from telegram.utils import perform_voice_recognition, extract_audio
 
 
 def setup_handlers(dp: Dispatcher):

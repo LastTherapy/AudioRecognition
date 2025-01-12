@@ -48,3 +48,8 @@ typing_extensions==4.12.2
 urllib3==2.2.2
 whisper==1.1.10
 yarl==1.9.4
+
+openai~=1.59.3
+moviepy~=2.1.1
+pynvml~=12.0.0
+fastapi~=0.115.6

@@ -65,6 +65,7 @@ def recognition(destination_file: str, model: str = "turbo"):
         raise RuntimeError(result['error'])
     return result
 
+
 def split_string(s, chunk_size=4096):
     for start in range(0, len(s), chunk_size):
         yield s[start:start + chunk_size]

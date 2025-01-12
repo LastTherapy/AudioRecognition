@@ -1,3 +1,4 @@
+import asyncio
 import os
 import logging
 from time import sleep
@@ -9,7 +10,11 @@ import WhisperRecognition
 from moviepy import VideoFileClip
 from config import VIDEO_STORAGE
 from config import media_autoremove
-from llm.openai_mini import improve_recognition
+import requests
+from settings import api_url
+
+
+
 
 
 async def download_file(bot: Bot, message: Message) -> str:
@@ -45,10 +50,16 @@ async def perform_voice_recognition(message: Message, model: str = 'small', audi
         destination_file = audio_path
 
     await bot.send_chat_action(chat_id=message.chat.id, action="typing")
-    recognized: Message = await message.reply(f"Начинаю распознавание... Использую {model} модель...")
+    recognized: Message = await message.reply(f"Начинаю распознавание...")
 
     try:
-        result = WhisperRecognition.recognition(destination_file, model)['result']
+        result: str = WhisperRecognition.recognition(destination_file, model)['result']
+        if not result:
+            return
+        # using llm for correct mistakes
+        await recognized.edit_text(f"Отправляю результат на корректировку...")
+        result = await improve_recognition(result)
+
     except RuntimeError as e:
         logging.exception("Error in voice recognition")
         print(e)
@@ -58,16 +69,16 @@ async def perform_voice_recognition(message: Message, model: str = 'small', audi
         await bot.delete_message(chat_id=message.chat.id, message_id=message.message_id)
         return
 
-    if not result:
-        return
-
-    # using llm for correct mistakes
-    result = improve_recognition(result)
-
     if len(result) < 4096:
-        await bot.edit_message_text(result, chat_id=message.chat.id, message_id=recognized.message_id)
+        if len(result) > 0:
+            await recognized.edit_text(result)
+        # await bot.edit_message_text(result, chat_id=message.chat.id, message_id=recognized.message_id)
+        else:
+            await recognized.edit_text('В медиа нет текста')
+            sleep(5)
+            await recognized.delete()
     else:
-        await bot.delete_message(message_id=recognized.message_id, chat_id=recognized.chat.id)
+        await recognized.delete()
         split = WhisperRecognition.split_string(result)
         for chunk in split:
             await message.reply(chunk)
@@ -75,3 +86,20 @@ async def perform_voice_recognition(message: Message, model: str = 'small', audi
     if media_autoremove:
         os.remove(destination_file)
 
+
+async def improve_recognition(data: str):
+    post_data = {
+        "message": data
+    }
+    response = requests.post(api_url, json=post_data)
+    print(response)
+    print(response.text)
+    if response.status_code == 200:
+        return response.text
+    else:
+        return data
+
+
+if __name__ == '__main__':
+    result = asyncio.run(improve_recognition('Hello, how are you?'))
+    print(result)

@@ -6,7 +6,7 @@ from dotenv import load_dotenv
 
 
 load_dotenv()
-from llm.openai_mini import improve_recognition
+from llm.openai_mini import improve_recognition as llm_improve
 
 
 app = FastAPI()
@@ -18,7 +18,7 @@ class AudioMessage(BaseModel):
 
 @app.post("/api/audio_recognition/improve/")
 def improve_recognition(data: AudioMessage):
-    return improve_recognition(data.message)
+    return llm_improve(data.message)
 
 
 if __name__ == "__main__":

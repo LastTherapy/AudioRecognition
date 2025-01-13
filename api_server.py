@@ -1,4 +1,4 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, Response
 from pydantic import BaseModel
 import settings
 import uvicorn
@@ -18,7 +18,7 @@ class AudioMessage(BaseModel):
 
 @app.post("/api/audio_recognition/improve/")
 def improve_recognition(data: AudioMessage):
-    return llm_improve(data.message)
+    return Response(content=llm_improve(data.message), media_type="text/plain")
 
 
 if __name__ == "__main__":

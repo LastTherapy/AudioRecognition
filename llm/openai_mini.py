@@ -4,7 +4,7 @@ import os
 api_key = os.getenv("OPENAI_API_KEY")
 
 if api_key is None:
-    raise Exception("OPENAI_API_KEY is not set in цenvironment")
+    raise Exception("OPENAI_API_KEY is not set in environment")
 client = OpenAI(
     api_key=api_key
 )

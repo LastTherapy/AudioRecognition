@@ -20,12 +20,12 @@ def setup_handlers(dp: Dispatcher):
     async def video_note_handler(message: Message):
         logging.info(f"Video note received from {message.from_user.full_name} with id {message.from_user.id}")
         audio_path: str = await extract_audio(message)
-        await perform_voice_recognition(message, model='large', audio_path=audio_path)
+        await perform_voice_recognition(message, audio_path=audio_path)
 
     @dp.message(F.content_type.in_({'voice'}))
     async def auto_voice_recognition(message: Message):
         logging.info(f'Voice received from {message.from_user.full_name} with id {message.from_user.id}')
-        await perform_voice_recognition(message, model='large')
+        await perform_voice_recognition(message)
         gc.collect()
 
     @dp.message()

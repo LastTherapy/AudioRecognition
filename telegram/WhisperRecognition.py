@@ -45,7 +45,7 @@ def isolated_recognition(destination_file: str, queue, model: str = "turbo"):
     print(f"Using {device}")
     try:
         model = whisper.load_model(model, device=device)
-        result = model.transcribe(destination_file)
+        result = model.transcribe(destination_file, language='ru')
         queue.put({'result': result['text']})
     except torch.cuda.OutOfMemoryError:
         # we can't handle it via isolated process, so just put a message
@@ -70,3 +70,7 @@ def split_string(s, chunk_size=4096):
     for start in range(0, len(s), chunk_size):
         yield s[start:start + chunk_size]
 
+
+if __name__ == "__main__":
+    result = recognition("voice/40916.wav", "large")
+    print(result)

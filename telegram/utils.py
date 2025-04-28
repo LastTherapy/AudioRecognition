@@ -1,178 +1,130 @@
 import asyncio
-import aiohttp
 import logging
-import os
+
 from time import sleep
-import mimetypes
-import requests
 from aiogram import Bot
 from aiogram.types import Message
 from moviepy import VideoFileClip
+from telegram.config import WHISPER_CLI,  WHISPER_MODEL
+from pathlib import Path
+import subprocess
+import re
+import nltk
+from nltk.tokenize import TextTilingTokenizer
+import numpy as np
+from scipy.spatial.distance import cosine
+from sentence_transformers import SentenceTransformer
 
-from settings import api_url
-from telegram import WhisperRecognition
-from telegram.config import VOICE_STORAGE, VIDEO_STORAGE, media_autoremove
-
-
-
-
-
-
-
-
-# async def perform_voice_recognition(message: Message, model: str = 'small', audio_path=None):
-#     bot = message.bot
-#     if audio_path is None:
-#         destination_file = await download_file(bot, message)
-#     else:
-#         destination_file = audio_path
-#
-#     await bot.send_chat_action(chat_id=message.chat.id, action="typing")
-#     recognized: Message = await message.reply(f"Начинаю распознавание...")
-#
-#     try:
-#         result: str = WhisperRecognition.recognition(destination_file, model)['result']
-#         if not result:
-#             return
-#         # using llm for correct mistakes
-#         await recognized.edit_text(f"Отправляю результат на корректировку...")
-#         result = await improve_recognition(result)
-#
-#     except Exception as e:
-#         logging.exception("Error in voice recognition")
-#         print(e)
-#         result = "Sorry, error in voice recognition. Try again later."
-#         await message.reply(result)
-#         sleep(5)
-#         await bot.delete_message(chat_id=message.chat.id, message_id=message.message_id)
-#         return
-#
-#     if len(result) < 4096:
-#         if len(result) > 0:
-#             await recognized.edit_text(result)
-#         # await bot.edit_message_text(result, chat_id=message.chat.id, message_id=recognized.message_id)
-#         else:
-#             await recognized.edit_text('В медиа нет текста')
-#             sleep(5)
-#             await recognized.delete()
-#     else:
-#         await recognized.delete()
-#         split = WhisperRecognition.split_string(result)
-#         for chunk in split:
-#             await message.reply(chunk)
-#
-#     if media_autoremove:
-#         os.remove(destination_file)
-
-TRANSCRIBE_URL = "http://localhost:8555/transcribe/"
-
-async def download_file(bot: Bot, message: Message) -> str:
-    file = await bot.get_file(message.voice.file_id)
-    destination_file = os.path.join(VOICE_STORAGE, f'{message.message_id}.oga')
-    await bot.download_file(file.file_path, destination_file)
-    return destination_file
+# Загрузим необходимые ресурсы (раз в проекте):
+nltk.download('punkt')          # токенизатор предложений/слов
+nltk.download('stopwords')
+nltk.download('punkt_tab')
+model = SentenceTransformer('all-MiniLM-L6-v2')  # лёгкая и быстрая модель
 
 
-async def download_video_circle(bot: Bot, message: Message) -> str:
-    file = await bot.get_file(message.video_note.file_id)
-    destination_file = os.path.join(VIDEO_STORAGE, f'{message.message_id}.mp4')
-    await bot.download_file(file.file_path, destination_file)
-    return destination_file
+async def convert_voice(input_path: Path) -> Path:
+    output_path: Path = input_path.with_suffix('.wav')
+    command = [
+    "ffmpeg",
+    "-i", str(input_path),
+    "-ar", "16000",
+    "-ac", "1", # установить 1 канал (моно).
+    "-af", "highpass=f=200, lowpass=f=3000, dynaudnorm, afftdn",
+#  highpass=f=200 — отрезаем шумы ниже 200 Hz.
+# lowpass=f=3000 — отрезаем мусор выше 3000 Hz.
+# dynaudnorm — нормализуем громкость (голос будет ровный по громкости).
+# afftdn — адаптивное подавление шума (очень круто для чистоты речи).
+    "-sample_fmt", "s16",
+    # 16-битное аудио (PCM формат, для Whisper идеально).
+    str(output_path)
+    ]
+    process = await asyncio.create_subprocess_exec(
+        *command,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE
+    )
+    stdout, stderr = await process.communicate()
+    if process.returncode != 0:
+        raise RuntimeError(f"FFmpeg conversion failed: {stderr.decode()}")
+    
+    return output_path
+
+async def extract_audio(input_file: Path) -> str:
+    video = VideoFileClip(input_file)
+    output_file = input_file.with_suffix('.wav')
+    video.audio.write_audiofile(output_file, codec='pcm_s16le')
+    return output_file
 
 
-async def extract_audio(message: Message) -> str:
-    bot = message.bot
-    file: str = await download_video_circle(bot, message)
-    video = VideoFileClip(file)
-    if media_autoremove:
-        os.remove(file)
-    audio_path = os.path.join(VOICE_STORAGE, f'{message.message_id}.wav')
-    video.audio.write_audiofile(audio_path, codec='pcm_s16le')
-    return audio_path
+async def whisper_cli_recognition(input_path: Path) -> Path:
+    output_path = input_path.with_suffix('')
+
+    command = [
+        WHISPER_CLI,
+        '-m', WHISPER_MODEL,
+        '-f', str(input_path),
+        '-l', 'ru',
+        '-of', str(output_path),
+        '-otxt'
+    ]
+
+    print(f"Запускаю команду: {' '.join(command)}")
+
+    process = await asyncio.create_subprocess_exec(
+        *command,
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.PIPE,
+    )
+
+    stdout, stderr = await process.communicate()
+
+    print(f"[whisper-cli stdout]:\n{stdout.decode()}")
+    print(f"[whisper-cli stderr]:\n{stderr.decode()}")
+
+    if process.returncode != 0:
+        raise RuntimeError(f"Распознавание провалилось с кодом {process.returncode}")
+
+    return output_path.with_suffix('.txt')
+
+async def ml_split_text(raw_text: str) -> str:
+    # 1) Разбиваем на предложения
+    sentences = nltk.tokenize.sent_tokenize(raw_text)
+    if len(sentences) < 2:
+        return raw_text  # слишком короткий текст
+
+    # 2) Получаем эмбеддинги
+    emb = model.encode(sentences, convert_to_numpy=True)
+    # 3) Считаем «скачки» смысловой дистанции
+    dists = [cosine(emb[i], emb[i+1]) for i in range(len(emb)-1)]
+    # 4) Авто-порог: среднее + 1σ
+    mu, sigma = np.mean(dists), np.std(dists)
+    threshold = mu + sigma
+    break_idxs = [i for i, d in enumerate(dists) if d > threshold]
+    # 5) Формируем параграфы по найденным границам
+    paras, start = [], 0
+    for idx in break_idxs:
+        paras.append(" ".join(sentences[start:idx+1]))
+        start = idx+1
+    paras.append(" ".join(sentences[start:]))
+    # 6) Гарантируем минимум 2 параграфа
+    if len(paras) == 1:
+        mid = len(sentences) // 2 or 1
+        paras = [
+            " ".join(sentences[:mid]),
+            " ".join(sentences[mid:])
+        ]
+    # 7) Возвращаем единую строку с двойными переводами строк
+    return "\n\n".join(p.strip() for p in paras)
 
 
-async def perform_voice_recognition(message: Message, audio_path=None):
-    bot = message.bot
-
-    if audio_path is None:
-        destination_file = await download_file(bot, message)
-    else:
-        destination_file = audio_path
-
-    await bot.send_chat_action(chat_id=message.chat.id, action="typing")
-    recognized: Message = await message.reply(f"Провожу распознавание...")
-
-    try:
-        timeout = aiohttp.ClientTimeout(total=None)
-        async with aiohttp.ClientSession(timeout=timeout) as session:
-            with open(destination_file, "rb") as f:
-                # Определяем Content-Type на основе расширения файла
-                content_type, _ = mimetypes.guess_type(destination_file)
-                if content_type is None:
-                    # Устанавливаем тип по умолчанию или определяем по расширению вручную
-                    if destination_file.lower().endswith('.oga'):
-                        content_type = 'audio/ogg'
-                    elif destination_file.lower().endswith('.wav'):
-                        content_type = 'audio/wav'
-                    # Добавьте другие типы при необходимости
-                    else:
-                        content_type = 'application/octet-stream'  # Общий тип
-
-                data = aiohttp.FormData()
-                data.add_field(
-                    "file",
-                    f,
-                    filename=os.path.basename(destination_file),
-                    # Используем определенный content_type
-                    content_type=content_type
-                )
-                logging.info(f"Отправка файла {destination_file} с Content-Type: {content_type}")  # Логирование
-
-                async with session.post(TRANSCRIBE_URL, data=data) as response:
-                        if response.status != 200:
-                            raise Exception(f"Ошибка от сервера: {response.status}")
-                        result_json = await response.json()
-                        result = result_json.get("text", "")
-
-
-        if not result:
-            await recognized.edit_text("В медиа не найдено текста.")
-            sleep(5)
-            await recognized.delete()
-            return
-
-
-        # await recognized.edit_text("Отправляю результат на корректировку...")
-        # result = await improve_recognition(result)
-
-    except Exception as e:
-        logging.exception("Error in voice recognition")
-        await message.reply("Произошла ошибка при распознавании. Попробуйте позже.")
-        sleep(5)
-        await bot.delete_message(chat_id=message.chat.id, message_id=message.message_id)
-        return
-
-    # Отправка результата
-    if len(result) < 4096:
-        await recognized.edit_text(result)
-    else:
-        await recognized.delete()
-        for chunk in WhisperRecognition.split_string(result):
-            await message.reply(chunk)
-
-    if media_autoremove:
-        os.remove(destination_file)
-
-
-async def improve_recognition(data: str):
-    post_data = {
-        "message": data
-    }
-    response = requests.post(api_url, json=post_data)
-    print(response)
-    print(response.text)
-    if response.status_code == 200:
-        return response.text
-    else:
-        return data
+async def clean_whisper_text_basic(raw_text: str) -> str:
+    # Убираем переносы строк, которые НЕ после точки, вопроса или восклицания
+    text = re.sub(r'(?<![\.\?\!])\n', ' ', raw_text)
+    # Заменяем множественные пробелы на один
+    text = re.sub(r'\s+', ' ', text)
+    # Убираем пробелы перед пунктуацией
+    text = re.sub(r' \.', '.', text)
+    text = re.sub(r' \?', '?', text)
+    text = re.sub(r' \!', '!', text)
+    return text.strip()
 

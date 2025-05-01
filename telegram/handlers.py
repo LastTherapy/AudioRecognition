@@ -1,23 +1,24 @@
 import logging
 import re
-from aiogram import Dispatcher
-from aiogram.types import Message
-from aiogram import F
-from aiogram.filters.command import Command
 from typing import List
 from telegram.utils import split_text_for_telegram
 from pathlib import Path
 from telegram.config import VOICE_STORAGE, VIDEO_STORAGE
-
+#aiogram
+from aiogram import Dispatcher
+from aiogram.types import Message
+from aiogram import F
+from aiogram.filters.command import Command
+from aiogram.types import CallbackQuery, InlineKeyboardMarkup
 # langfuse imports
 from langfuse.media import LangfuseMedia
 from langfuse.decorators import observe, langfuse_context
-
 # project imports
 from audio_recognition.whisper_recogniser import whisper_cli_recognition
 from audio_recognition.text_process import clean_whisper_text_basic, ml_split_text
 from audio_recognition.utils import convert_voice, extract_audio
 from audio_recognition.config import WHISPER_MODEL
+from telegram.keyboards import Feedback, get_feedback_keyboard
 
 
 def setup_handlers(dp: Dispatcher):
@@ -37,7 +38,8 @@ def setup_handlers(dp: Dispatcher):
             name="telegram-video_note",
             metadata={
                 "bot_name": bot_name,
-                "recognition_model": WHISPER_MODEL
+                "recognition_model": WHISPER_MODEL,
+                "user": message.from_user.username
             }
         )
         logging.info(f"Video note received from {message.from_user.full_name} with id {message.from_user.id}")
@@ -60,7 +62,8 @@ def setup_handlers(dp: Dispatcher):
         langfuse_context.update_current_observation(input=media)
         text = await whisper_cli_recognition(wav_path)
         langfuse_context.update_current_observation(output=text)
-        
+        trace_id: str = langfuse_context.get_current_trace_id()
+        keyboard: InlineKeyboardMarkup  = get_feedback_keyboard(trace_id=trace_id)
         if text.strip():
             text = await clean_whisper_text_basic(text)
             text = await ml_split_text(text)
@@ -68,8 +71,13 @@ def setup_handlers(dp: Dispatcher):
                 await message.answer(text)
             else:
                 chunks = split_text_for_telegram(text)
-                for chunk in chunks:
-                    message.answer(chunk)            
+                for i, chunk in enumerate(chunks):
+                    if i == len(chunks) - 1:
+                        # последний кусок — с кнопками
+                        await message.answer(chunk, reply_markup=keyboard)
+                    else:
+                        # промежуточные куски — без кнопок
+                        await message.answer(chunk)          
         else:
             logging.info("No text in videonote")
         
@@ -82,9 +90,11 @@ def setup_handlers(dp: Dispatcher):
             name="telegram-voice",
             metadata={
                 "bot_name": bot_name,
-                "recognition_model": WHISPER_MODEL
+                "recognition_model": WHISPER_MODEL,
+                "user": message.from_user.username
             }
         )
+        trace_id: str = langfuse_context.get_current_trace_id()
         logging.info(f'Voice received from {message.from_user.full_name} with id {message.from_user.id}')
         asnwer_message: Message = await message.bot.send_message(message.chat.id, "Скачиваю файл")
         try:
@@ -100,7 +110,7 @@ def setup_handlers(dp: Dispatcher):
         
 
         # Конвертация ogg → wav
-        wav_path = await convert_voice(destination)
+        wav_path: Path = await convert_voice(destination)
         
         # tracing languse media
         media = LangfuseMedia(
@@ -111,31 +121,45 @@ def setup_handlers(dp: Dispatcher):
         
         await asnwer_message.edit_text('Успех. Слушаю аудио.')
         # Распознавание через Whisper
-        text = await whisper_cli_recognition(wav_path)
+        text: str = await whisper_cli_recognition(wav_path)
         
         # await asnwer_message.edit_text('Расставляю абзацы')
         
         langfuse_context.update_current_observation(output=text)
-
+        keyboard: InlineKeyboardMarkup  = get_feedback_keyboard(trace_id=trace_id)
         # Отправляем текст пользователю
         if text.strip():
             text = await clean_whisper_text_basic(text)
             text = await ml_split_text(text)
             if len(text) < 4096:
-                await asnwer_message.edit_text(text)
+                await asnwer_message.edit_text(text, reply_markup=keyboard)
+
             else:
                 await asnwer_message.delete()
                 chunks = split_text_for_telegram(text)
-                for chunk in chunks:
-                    message.answer(chunk)
+                for i, chunk in enumerate(chunks):
+                    if i == len(chunks) - 1:
+                        # последний кусок — с кнопками
+                        await message.answer(chunk, reply_markup=keyboard)
+                    else:
+                        # промежуточные куски — без кнопок
+                        await message.answer(chunk)
                     
         else:
             await asnwer_message.edit_text("Аудио без слов")
+            
 
 
     @dp.message()
     async def log_text_messages(message: Message):
         logging.info(f"{message.chat.full_name}: {message.text}")
+        
+    
+    @dp.callback_query(Feedback.filter())
+    @observe()
+    async def feedback_handler(query: CallbackQuery, callback_data: Feedback):
+        print(f"feedback pressed {callback_data.val}")
+        pass
 
 
 

@@ -6,6 +6,11 @@ from aiogram import Bot, Dispatcher
 from dotenv import load_dotenv
 from telegram.handlers import setup_handlers
 from telegram.config import TG_TOKEN
+from config import LANGFUSE_URL, LANGFUSE_SK, LANGFUSE_PK
+
+os.environ["LANGFUSE_SECRET_KEY"] = LANGFUSE_SK
+os.environ["LANGFUSE_PUBLIC_KEY"] = LANGFUSE_PK
+os.environ["LANGFUSE_HOST"] = LANGFUSE_URL
 
 async def run_bot() -> None:
     logging.basicConfig(level=logging.DEBUG, stream=sys.stdout)
@@ -23,5 +28,4 @@ async def main():
 
 if __name__ == "__main__":
     asyncio.run(main())
-
 

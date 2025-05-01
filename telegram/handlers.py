@@ -5,21 +5,41 @@ from aiogram.types import Message
 from aiogram import F
 from aiogram.filters.command import Command
 from typing import List
-from telegram.utils import convert_voice, whisper_cli_recognition, clean_whisper_text_basic, extract_audio, ml_split_text
+from telegram.utils import split_text_for_telegram
 from pathlib import Path
 from telegram.config import VOICE_STORAGE, VIDEO_STORAGE
+
+# langfuse imports
+from langfuse.media import LangfuseMedia
+from langfuse.decorators import observe, langfuse_context
+
+# project imports
+from audio_recognition.whisper_recogniser import whisper_cli_recognition
+from audio_recognition.text_process import clean_whisper_text_basic, ml_split_text
+from audio_recognition.utils import convert_voice, extract_audio
+from audio_recognition.config import WHISPER_MODEL
+
 
 def setup_handlers(dp: Dispatcher):
     @dp.message(Command("start"))
     async def start_message(message: Message):
-        await message.answer("Просто отправьте голосовое сообщение для распознавания и подождите результата.")
+        await message.answer("Отправьте голосовое сообщение для распознавания и подождите результата. Либо добавьте в группу и получайте автоматическое распознавнаие видеокружочков и голосовых сообщений.")
 
     @dp.message(Command("help"))
     async def help_message(message: Message):
         await message.answer("Бот распознает голосовые сообощения. Отправьте ему их лично, либо просто добавьте бота в группу.  Для распознавания используется open-source модель whisper.")
 
     @dp.message(F.video_note)
+    @observe()
     async def video_note_handler(message: Message):
+        bot_name = await message.bot.get_my_name(request_timeout=5)
+        langfuse_context.update_current_observation(
+            name="telegram-video_note",
+            metadata={
+                "bot_name": bot_name,
+                "recognition_model": WHISPER_MODEL
+            }
+        )
         logging.info(f"Video note received from {message.from_user.full_name} with id {message.from_user.id}")
         try:
             file = await message.bot.get_file(message.video_note.file_id, request_timeout=30)
@@ -32,13 +52,14 @@ def setup_handlers(dp: Dispatcher):
         
         audio_path: Path = await extract_audio(destination)
         wav_path = await convert_voice(audio_path)
-        txt_path = await whisper_cli_recognition(wav_path)
-        try:
-            text = txt_path.read_text(encoding='utf-8')
-        except Exception as e:
-            logging.error(f"Ошибка чтения файла распознавания: {e}")
-            await message.answer("Ошибка при чтении результата распознавания")
-            return
+        # tracing languse media
+        media = LangfuseMedia(
+            file_path=str(wav_path),
+            content_type="audio/wav"
+        )
+        langfuse_context.update_current_observation(input=media)
+        text = await whisper_cli_recognition(wav_path)
+        langfuse_context.update_current_observation(output=text)
         
         if text.strip():
             text = await clean_whisper_text_basic(text)
@@ -50,11 +71,20 @@ def setup_handlers(dp: Dispatcher):
                 for chunk in chunks:
                     message.answer(chunk)            
         else:
-            pass 
+            logging.info("No text in videonote")
         
 
     @dp.message(F.voice)
+    @observe()
     async def auto_voice_recognition(message: Message):
+        bot_name = await message.bot.get_my_name(request_timeout=5)
+        langfuse_context.update_current_observation(
+            name="telegram-voice",
+            metadata={
+                "bot_name": bot_name,
+                "recognition_model": WHISPER_MODEL
+            }
+        )
         logging.info(f'Voice received from {message.from_user.full_name} with id {message.from_user.id}')
         asnwer_message: Message = await message.bot.send_message(message.chat.id, "Скачиваю файл")
         try:
@@ -68,18 +98,24 @@ def setup_handlers(dp: Dispatcher):
             await asnwer_message.edit_text("Не получилось скачать файл")
             return
         
-         # Конвертация ogg → wav
+
+        # Конвертация ogg → wav
         wav_path = await convert_voice(destination)
+        
+        # tracing languse media
+        media = LangfuseMedia(
+            file_path=str(wav_path),
+            content_type="audio/wav"
+        )
+        langfuse_context.update_current_observation(input=media)
+        
         await asnwer_message.edit_text('Успех. Слушаю аудио.')
         # Распознавание через Whisper
-        txt_path = await whisper_cli_recognition(wav_path)
-        await asnwer_message.edit_text('Расставляю абзацы')
-        try:
-            text = txt_path.read_text(encoding='utf-8')
-        except Exception as e:
-            logging.error(f"Ошибка чтения файла распознавания: {e}")
-            await message.answer("Ошибка при чтении результата распознавания")
-            return
+        text = await whisper_cli_recognition(wav_path)
+        
+        # await asnwer_message.edit_text('Расставляю абзацы')
+        
+        langfuse_context.update_current_observation(output=text)
 
         # Отправляем текст пользователю
         if text.strip():
@@ -103,39 +139,3 @@ def setup_handlers(dp: Dispatcher):
 
 
 
-def split_text_for_telegram(text: str, max_length: int = 4096) -> List[str]:
-    """
-    Разбивает текст на части, каждая из которых не превышает max_length символов.
-    Сначала пытается разделить по абзацам, затем по предложениям, и, при необходимости, по символам.
-    """
-    chunks = []
-    paragraphs = text.split('\n\n')  # Разделение по абзацам
-
-    for paragraph in paragraphs:
-        paragraph = paragraph.strip()
-        if not paragraph:
-            continue
-
-        if len(paragraph) <= max_length:
-            chunks.append(paragraph)
-        else:
-            # Разделение абзаца на предложения
-            sentences = re.split(r'(?<=[.!?])\s+', paragraph)
-            current_chunk = ''
-            for sentence in sentences:
-                if len(current_chunk) + len(sentence) + 1 <= max_length:
-                    current_chunk += (' ' if current_chunk else '') + sentence
-                else:
-                    if current_chunk:
-                        chunks.append(current_chunk)
-                    if len(sentence) <= max_length:
-                        current_chunk = sentence
-                    else:
-                        # Разделение длинного предложения на части
-                        for i in range(0, len(sentence), max_length):
-                            chunks.append(sentence[i:i+max_length])
-                        current_chunk = ''
-            if current_chunk:
-                chunks.append(current_chunk)
-
-    return chunks

@@ -13,12 +13,21 @@ from aiogram.types import CallbackQuery, InlineKeyboardMarkup
 # langfuse imports
 from langfuse.media import LangfuseMedia
 from langfuse.decorators import observe, langfuse_context
+from langfuse import Langfuse
+
 # project imports
 from audio_recognition.whisper_recogniser import whisper_cli_recognition
 from audio_recognition.text_process import clean_whisper_text_basic, ml_split_text
 from audio_recognition.utils import convert_voice, extract_audio
 from audio_recognition.config import WHISPER_MODEL
 from telegram.keyboards import Feedback, get_feedback_keyboard
+from config import LANGFUSE_PK, LANGFUSE_SK, LANGFUSE_URL
+
+langfuse = Langfuse(
+    public_key=LANGFUSE_PK,
+    secret_key=LANGFUSE_SK,
+    host=LANGFUSE_URL
+)
 
 
 def setup_handlers(dp: Dispatcher):
@@ -68,7 +77,7 @@ def setup_handlers(dp: Dispatcher):
             text = await clean_whisper_text_basic(text)
             text = await ml_split_text(text)
             if len(text) < 4096:
-                await message.answer(text)
+                await message.answer(text, reply_markup=keyboard)
             else:
                 chunks = split_text_for_telegram(text)
                 for i, chunk in enumerate(chunks):
@@ -156,10 +165,15 @@ def setup_handlers(dp: Dispatcher):
         
     
     @dp.callback_query(Feedback.filter())
-    @observe()
     async def feedback_handler(query: CallbackQuery, callback_data: Feedback):
-        print(f"feedback pressed {callback_data.val}")
-        pass
+        await query.answer("Спасибо за отзыв!", show_alert=False)
+        langfuse.score(
+            trace_id=callback_data.trace_id,
+            name = "user_feedback",
+            value = float(callback_data.val),
+            data_type="BOOLEAN",
+            comment=f"from user: {query.from_user.username}"
+        )
 
 
 
